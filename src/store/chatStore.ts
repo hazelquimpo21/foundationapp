@@ -3,6 +3,12 @@
  *
  * Manages chat messages and conversation state.
  * Handles sending messages and displaying responses.
+ * 
+ * ARCHITECTURE NOTES:
+ * - Messages are loaded from the database via loadMessages()
+ * - The welcome message is added by the chat page (not this store)
+ * - Call reset() when switching sessions to clear old messages
+ * - sendMessage() handles optimistic updates and API calls
  */
 
 import { create } from 'zustand';
@@ -24,6 +30,10 @@ interface ChatState {
   isTyping: boolean;
   isSending: boolean;
   error: string | null;
+  
+  // Loading State - tracks if initial DB load completed
+  // Used to coordinate welcome message (only add after load)
+  messagesLoaded: boolean;
 
   // Actions
   loadMessages: (sessionId: string) => Promise<void>;
@@ -54,15 +64,37 @@ export const useChatStore = create<ChatState>()(
       isTyping: false,
       isSending: false,
       error: null,
+      messagesLoaded: false,
 
       /**
        * Load existing messages from the database.
+       * 
+       * IMPORTANT: This is idempotent with double-check protection:
+       * 1. Check before fetch (quick rejection)
+       * 2. Check after fetch (race condition protection)
+       * 
+       * This prevents the welcome message from being overwritten by
+       * React StrictMode's double-invocation or other race conditions.
        */
       loadMessages: async (sessionId: string) => {
-        log.info('📂 Loading messages', { sessionId });
+        // Check #1: Skip if already loaded (fast path)
+        if (get().messagesLoaded) {
+          log.debug('📂 Messages already loaded, skipping', { sessionId });
+          return;
+        }
+
+        log.info('📂 Loading messages from database', { sessionId });
 
         try {
           const dbMessages = await getSessionMessages(sessionId);
+
+          // Check #2: After fetch, verify we should still set messages
+          // This handles race conditions where another load completed
+          // or welcome message was added while we were fetching
+          if (get().messagesLoaded) {
+            log.debug('📂 Messages loaded by another call while fetching, skipping set', { sessionId });
+            return;
+          }
 
           // Convert database messages to chat messages
           const messages: ChatMessage[] = dbMessages.map((msg) => ({
@@ -74,11 +106,13 @@ export const useChatStore = create<ChatState>()(
             timestamp: new Date(msg.created_at),
           }));
 
-          set({ messages });
-          log.info('✅ Messages loaded', { count: messages.length });
+          // Set both messages and the loaded flag atomically
+          set({ messages, messagesLoaded: true });
+          log.info('✅ Messages loaded from database', { count: messages.length });
         } catch (error) {
           log.error('❌ Failed to load messages', { error });
-          set({ error: 'Failed to load conversation history' });
+          // Still mark as loaded so welcome can be added
+          set({ error: 'Failed to load conversation history', messagesLoaded: true });
         }
       },
 
@@ -229,7 +263,8 @@ export const useChatStore = create<ChatState>()(
       },
 
       /**
-       * Reset the store.
+       * Reset the store to initial state.
+       * Called when switching sessions to ensure clean slate.
        */
       reset: () => {
         log.info('🔄 Resetting chat store');
@@ -239,6 +274,7 @@ export const useChatStore = create<ChatState>()(
           isTyping: false,
           isSending: false,
           error: null,
+          messagesLoaded: false,
         });
       },
     }),
@@ -263,3 +299,6 @@ export const useHasInteraction = () => useChatStore((s) => !!s.pendingInteractio
 /** Check if we're waiting for a response */
 export const useIsWaiting = () =>
   useChatStore((s) => s.isTyping || s.isSending);
+
+/** Check if messages have been loaded from DB (used to gate welcome message) */
+export const useMessagesLoaded = () => useChatStore((s) => s.messagesLoaded);

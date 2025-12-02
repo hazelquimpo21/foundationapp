@@ -3,6 +3,10 @@
  *
  * Main chat interface that displays messages and handles input.
  * This is the primary conversation UI component.
+ * 
+ * NOTE: Welcome message is added via the chat page's useEffect hook,
+ * not rendered here as a separate component. This ensures the welcome
+ * message is part of the actual conversation history.
  */
 
 'use client';
@@ -11,7 +15,7 @@ import { useEffect, useRef } from 'react';
 import { useChatStore, useIsWaiting } from '@/store';
 import { MessageBubble, TypingIndicator } from './MessageBubble';
 import { ChatInput } from './ChatInput';
-import { cn } from '@/lib/utils';
+import { cn, log } from '@/lib/utils';
 
 // ============================================
 // 📦 Props
@@ -38,6 +42,7 @@ export function ChatContainer({ sessionId, className }: ChatContainerProps) {
 
   // Load messages on mount
   useEffect(() => {
+    log.info('💬 ChatContainer mounted, loading messages', { sessionId });
     loadMessages(sessionId);
   }, [sessionId, loadMessages]);
 
@@ -47,9 +52,13 @@ export function ChatContainer({ sessionId, className }: ChatContainerProps) {
   }, [messages, isTyping]);
 
   /**
-   * Handle sending a message.
+   * Handle sending a message from user input.
    */
   const handleSend = (content: string) => {
+    log.info('📤 User sending message', { 
+      sessionId, 
+      contentLength: content.length 
+    });
     sendMessage(sessionId, content);
   };
 
@@ -58,12 +67,7 @@ export function ChatContainer({ sessionId, className }: ChatContainerProps) {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-2xl mx-auto space-y-4">
-          {/* Welcome message if no messages */}
-          {messages.length === 0 && !isTyping && (
-            <WelcomeMessage />
-          )}
-
-          {/* Messages */}
+          {/* Messages - welcome message comes from the store, not a separate component */}
           {messages.map((message, index) => (
             <MessageBubble
               key={message.id}
@@ -72,10 +76,10 @@ export function ChatContainer({ sessionId, className }: ChatContainerProps) {
             />
           ))}
 
-          {/* Typing indicator */}
+          {/* Typing indicator - shows when AI is generating response */}
           {isTyping && <TypingIndicator />}
 
-          {/* Scroll anchor */}
+          {/* Scroll anchor - invisible element at bottom for auto-scroll */}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -87,31 +91,6 @@ export function ChatContainer({ sessionId, className }: ChatContainerProps) {
           isLoading={isWaiting}
           placeholder="Tell me about your business..."
         />
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// 👋 Welcome Message
-// ============================================
-
-function WelcomeMessage() {
-  return (
-    <div className="text-center py-12 animate-fade-in">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
-        <span className="text-2xl">🎯</span>
-      </div>
-      <h2 className="text-xl font-semibold text-gray-800 mb-2">
-        Let's build your brand foundation
-      </h2>
-      <p className="text-gray-600 max-w-md mx-auto">
-        I'll ask you questions about your business, and together we'll create
-        clarity on who you are, who you serve, and what makes you different.
-      </p>
-      <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 text-sm text-gray-600">
-        <span>💡</span>
-        <span>Start by telling me about your business</span>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ export {
   useMessageCount,
   useHasInteraction,
   useIsWaiting,
+  useMessagesLoaded,
 } from './chatStore';
 
 // Foundation data

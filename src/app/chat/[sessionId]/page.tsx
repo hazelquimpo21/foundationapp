@@ -3,17 +3,36 @@
  *
  * Main conversation interface for brand onboarding.
  * Two-column layout with chat and progress panel.
+ * 
+ * ARCHITECTURE NOTES:
+ * - Session and foundation data are loaded on mount
+ * - Welcome message is added once per session (guarded by ref to prevent duplicates)
+ * - Messages are managed by chatStore, not local state
  */
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChatContainer } from '@/components/chat';
 import { ProgressPanel } from '@/components/progress';
-import { useSessionStore, useChatStore, useFoundationStore } from '@/store';
+import { useSessionStore, useChatStore, useFoundationStore, useMessagesLoaded } from '@/store';
 import { cn, log } from '@/lib/utils';
 import { ArrowLeft, Menu, X, Loader2 } from 'lucide-react';
+
+// ============================================
+// 🎯 Constants
+// ============================================
+
+/**
+ * Initial welcome message shown when starting a new conversation.
+ * This is added to the chatStore so it persists in message history.
+ */
+const WELCOME_MESSAGE = `Let's build your brand foundation together! 🎯
+
+By the end of our conversation, you'll have clarity on who you are, who you serve, and how to talk about it.
+
+First—what's your business called, and what does it do? Don't worry about being polished. Just tell me like you'd tell a friend.`;
 
 // ============================================
 // 🎨 Page Component
@@ -23,6 +42,9 @@ export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = params.sessionId as string;
+
+  // Ref to prevent duplicate welcome message (React StrictMode protection)
+  const welcomeAddedRef = useRef(false);
 
   // Store state
   const loadSession = useSessionStore((s) => s.loadSession);
@@ -36,43 +58,99 @@ export default function ChatPage() {
   const loadFoundation = useFoundationStore((s) => s.loadFoundation);
   const addAssistantMessage = useChatStore((s) => s.addAssistantMessage);
   const messages = useChatStore((s) => s.messages);
+  const resetChat = useChatStore((s) => s.reset);
+  
+  // Track if DB messages have been loaded (prevents welcome from being overwritten)
+  const messagesLoaded = useMessagesLoaded();
 
   // UI state
   const [showProgress, setShowProgress] = useState(false);
 
-  // Load session and foundation on mount
+  // ============================================
+  // 🔄 Reset stores when sessionId changes
+  // This ensures clean state when navigating between sessions
+  // ============================================
+  useEffect(() => {
+    log.info('🔄 Session ID changed, resetting state', { sessionId });
+    
+    // Reset the welcome message guard for the new session
+    welcomeAddedRef.current = false;
+    
+    // Reset chat store to clear old messages and reset messagesLoaded flag
+    resetChat();
+  }, [sessionId, resetChat]);
+
+  // ============================================
+  // 📂 Load session on mount
+  // ============================================
   useEffect(() => {
     const initialize = async () => {
       log.info('📂 Initializing chat page', { sessionId });
 
       try {
         await loadSession(sessionId);
+        log.info('✅ Chat page initialized', { sessionId });
       } catch (err) {
-        log.error('❌ Failed to load session', { error: err });
+        log.error('❌ Failed to load session', { sessionId, error: err });
       }
     };
 
     initialize();
   }, [sessionId, loadSession]);
 
-  // Load foundation once we have business ID
+  // ============================================
+  // 📚 Load foundation once we have business ID
+  // ============================================
   useEffect(() => {
     if (business?.id) {
+      log.info('📚 Loading foundation for business', { businessId: business.id });
       loadFoundation(business.id);
     }
   }, [business?.id, loadFoundation]);
 
-  // Add welcome message if no messages
+  // ============================================
+  // 👋 Add welcome message (once per session)
+  // 
+  // IMPORTANT: Only adds welcome AFTER messagesLoaded is true!
+  // This prevents the welcome from being overwritten by loadMessages.
+  // 
+  // Guards against duplicate messages from:
+  // - React StrictMode (dev only, runs effects twice)
+  // - Component re-renders
+  // - Fast Refresh during development
+  // - Race conditions with loadMessages
+  // ============================================
   useEffect(() => {
-    if (session && messages.length === 0 && !isLoading) {
-      // Add initial assistant message
-      setTimeout(() => {
-        addAssistantMessage(
-          `Let's build your brand foundation together! 🎯\n\nBy the end of our conversation, you'll have clarity on who you are, who you serve, and how to talk about it.\n\nFirst—what's your business called, and what does it do? Don't worry about being polished. Just tell me like you'd tell a friend.`
-        );
-      }, 500);
+    // Guard: Only proceed if:
+    // 1. Session is loaded
+    // 2. Messages have been loaded from DB (prevents overwrite)
+    // 3. No messages exist in the database
+    // 4. We haven't already added the welcome message
+    const shouldAddWelcome = 
+      session && 
+      messagesLoaded &&
+      messages.length === 0 && 
+      !welcomeAddedRef.current;
+
+    if (!shouldAddWelcome) {
+      log.debug('👋 Welcome message conditions not met', { 
+        hasSession: !!session, 
+        messagesLoaded, 
+        messageCount: messages.length, 
+        welcomeAdded: welcomeAddedRef.current 
+      });
+      return;
     }
-  }, [session, messages.length, isLoading, addAssistantMessage]);
+
+    // Mark as added IMMEDIATELY to prevent race conditions
+    welcomeAddedRef.current = true;
+    
+    log.info('👋 Adding welcome message', { sessionId: session.id });
+
+    // Add immediately - no delay needed since we're waiting for messagesLoaded
+    addAssistantMessage(WELCOME_MESSAGE);
+    log.info('✅ Welcome message added', { sessionId: session.id });
+  }, [session, messagesLoaded, messages.length, addAssistantMessage]);
 
   // Loading state
   if (isLoading) {
