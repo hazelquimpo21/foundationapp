@@ -54,6 +54,7 @@ export type ExitVision = 'lifestyle' | 'acquisition' | 'ipo' | 'nonprofit' | 'un
 
 /** Bucket completion tracking */
 export interface BucketCompletion {
+  [key: string]: number  // Index signature for Record<string, number> compatibility
   core_idea: number
   value_prop: number
   market: number

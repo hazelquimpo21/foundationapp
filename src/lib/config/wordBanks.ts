@@ -250,5 +250,5 @@ export function getShuffledWords(
   const shuffled = shuffleArray(available)
   const toShow = shuffled.slice(0, displayCount)
 
-  return [...new Set([...selectedInCategory, ...toShow])]
+  return Array.from(new Set([...selectedInCategory, ...toShow]))
 }
