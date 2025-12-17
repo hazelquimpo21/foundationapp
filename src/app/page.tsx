@@ -40,11 +40,9 @@ export default function LandingPage() {
               Business Onboarder
             </span>
           </div>
+          {/* Single auth flow - magic link handles both login & signup */}
           <div className="flex items-center gap-4">
             <Link href="/login">
-              <Button variant="ghost">Sign In</Button>
-            </Link>
-            <Link href="/signup">
               <Button variant="primary">Get Started</Button>
             </Link>
           </div>
@@ -72,17 +70,12 @@ export default function LandingPage() {
             business idea, validating assumptions, and creating a clear path forward.
           </p>
 
-          {/* CTA Buttons */}
+          {/* CTA Button - Single auth flow with magic link */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-            <Link href="/signup">
+            <Link href="/login">
               <Button size="lg" className="px-8">
                 Start for Free
                 <Rocket className="w-5 h-5 ml-2" />
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button variant="outline" size="lg">
-                I have an account
               </Button>
             </Link>
           </div>

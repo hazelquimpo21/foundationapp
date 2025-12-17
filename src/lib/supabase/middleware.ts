@@ -58,17 +58,34 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protected routes check
-  const isAuthPage = request.nextUrl.pathname.startsWith('/login') ||
-                     request.nextUrl.pathname.startsWith('/signup')
-  const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') ||
-                           request.nextUrl.pathname.startsWith('/onboard')
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🛣️ ROUTE CLASSIFICATION
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const pathname = request.nextUrl.pathname
+  
+  // Auth pages (login/signup) - redirect to dashboard if logged in
+  const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup')
+  
+  // Auth callback - special handling for magic link redirects (always allow)
+  const isAuthCallback = pathname.startsWith('/auth/callback')
+  
+  // Protected routes - require authentication
+  const isProtectedRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/onboard')
 
-  // Redirect logic
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔀 REDIRECT LOGIC
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Skip auth checks for callback route - it handles its own auth
+  if (isAuthCallback) {
+    return supabaseResponse
+  }
+
   if (!user && isProtectedRoute) {
     // Not logged in, trying to access protected route → redirect to login
     const redirectUrl = new URL('/login', request.url)
-    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    redirectUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
