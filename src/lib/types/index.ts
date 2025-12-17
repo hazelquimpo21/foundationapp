@@ -126,6 +126,20 @@ export interface BusinessProject {
   ai_strengths: string[] | null
   ai_weaknesses: string[] | null
 
+  // Web Scraper Fields
+  social_urls: Record<string, string | undefined> | null
+  scraped_tagline: string | null
+  scraped_services: string[] | null
+  scraped_industry: string | null
+  scraped_content: string | null
+  scrape_confidence: number | null
+  scraped_at: string | null
+  instagram_handle: string | null
+  twitter_handle: string | null
+  facebook_url: string | null
+  tiktok_handle: string | null
+  youtube_url: string | null
+
   // Progress
   current_step: string
   bucket_completion: BucketCompletion
