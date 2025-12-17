@@ -42,8 +42,13 @@ src/
 │       └── StyleSlider.tsx       # Preference sliders
 │
 └── lib/
-    └── config/
-        └── onboarding.ts         # Step definitions, word banks, sliders
+    ├── config/
+    │   └── onboarding.ts         # Step definitions, word banks, sliders
+    ├── stores/
+    │   └── projectStore.ts       # Project state with error handling
+    └── utils/
+        ├── async.ts              # Timeout, retry, safe async utilities
+        └── logger.ts             # Beautiful console logging
 ```
 
 ## 🔄 User Flow
@@ -217,6 +222,28 @@ http://localhost:3000
 - [ ] Voice input for Mad Libs
 - [ ] Level 2 & 3 Mad Libs for more detail
 - [ ] Real-time validation
+
+## ⚡ Error Handling & Resilience
+
+The onboarding flow includes robust error handling:
+
+### Assets Page (Step 2)
+- **Timeout Protection**: Database saves have a 15-second timeout (won't hang forever)
+- **Error Banner**: Friendly error messages with retry/skip options
+- **User-Friendly**: Non-technical language ("Oops! Couldn't save")
+- **Recovery Options**: Users can retry or skip when errors occur
+
+### Project Store (`/lib/stores/projectStore.ts`)
+- **Error Propagation**: `updateFields()` now properly throws errors so calling code knows when saves fail
+- **Rollback**: Failed saves revert local state to prevent data inconsistency
+- **Save Error State**: `saveError` state for UI feedback
+- **Logging**: Comprehensive logging with emojis for easy debugging
+
+### Async Utilities (`/lib/utils/async.ts`)
+- `withTimeout()` - Wrap any promise with a timeout
+- `withRetry()` - Retry operations with exponential backoff
+- `safeAsync()` - Safe wrapper that never throws
+- `safeFetch()` - Combined timeout + safe error handling
 
 ## 🐛 Known Limitations
 

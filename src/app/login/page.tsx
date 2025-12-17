@@ -154,8 +154,8 @@ export default function LoginPage() {
               variant="outline"
               fullWidth
               onClick={handleTryAgain}
-              leftIcon={<ArrowLeft className="w-4 h-4" />}
             >
+              <ArrowLeft className="w-4 h-4" />
               Use a different email
             </Button>
             
@@ -206,8 +206,8 @@ export default function LoginPage() {
                 fullWidth
                 loading={isLoading}
                 disabled={!email}
-                leftIcon={!isLoading ? <Sparkles className="w-4 h-4" /> : undefined}
               >
+                {!isLoading && <Sparkles className="w-4 h-4" />}
                 {isLoading ? 'Sending link...' : 'Send magic link'}
               </Button>
             </form>

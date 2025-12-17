@@ -3,15 +3,33 @@
  * ================
  * Manages business project state with Zustand.
  *
+ * Features:
+ * - Optimistic updates for snappy UX
+ * - Timeout protection (no hanging forever)
+ * - Proper error propagation for calling code
+ * - Save error state for UI feedback
+ *
  * Usage:
- *   const { project, updateField, createProject } = useProjectStore()
+ *   const { project, updateField, createProject, saveError } = useProjectStore()
  */
 
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase/client'
 import { log } from '@/lib/utils/logger'
+import { withTimeout } from '@/lib/utils/async'
 import { calculateBucketCompletion, calculateOverallCompletion, BUCKET_ORDER } from '@/lib/config/buckets'
 import type { BusinessProject, BucketCompletion } from '@/lib/types'
+
+// ============================================
+// 📋 CONFIG
+// ============================================
+
+/** Database operation timeout in ms */
+const DB_TIMEOUT_MS = 15000
+
+// ============================================
+// 📋 TYPES
+// ============================================
 
 interface ProjectState {
   // State
@@ -20,16 +38,20 @@ interface ProjectState {
   isLoading: boolean
   isSaving: boolean
   error: string | null
+  /** Last save error - separate from load errors for better UX */
+  saveError: string | null
 
   // Actions
   loadProjects: (memberId: string) => Promise<void>
   loadProject: (projectId: string) => Promise<void>
   createProject: (memberId: string, name?: string) => Promise<BusinessProject | null>
   updateField: <K extends keyof BusinessProject>(field: K, value: BusinessProject[K]) => Promise<void>
+  /** Updates multiple fields - THROWS on error for caller handling */
   updateFields: (fields: Partial<BusinessProject>) => Promise<void>
   deleteProject: (projectId: string) => Promise<void>
   clearProject: () => void
   clearError: () => void
+  clearSaveError: () => void
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -39,6 +61,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoading: false,
   isSaving: false,
   error: null,
+  saveError: null,
 
   /**
    * 📋 Load all projects for a member
@@ -194,22 +217,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   /**
    * 📝 Update multiple fields at once
+   *
+   * ⚠️ IMPORTANT: This function THROWS on error!
+   * The calling code must handle errors appropriately.
+   * This is intentional - callers need to know when saves fail
+   * so they can show user feedback and decide whether to proceed.
+   *
+   * @throws Error if the database update fails or times out
    */
   updateFields: async (fields) => {
     const { project } = get()
     if (!project) {
       log.warn('💼 No project loaded')
-      return
+      throw new Error('No project loaded - cannot save changes')
     }
 
-    log.debug('💼 Updating fields', { fields: Object.keys(fields) })
-    set({ isSaving: true })
+    log.info('💼 Updating fields...', { fields: Object.keys(fields) })
+    set({ isSaving: true, saveError: null })
+
+    // Keep original for rollback
+    const originalProject = project
 
     try {
-      // Optimistic update
+      // Optimistic update - update UI immediately
       const updatedProject = { ...project, ...fields }
 
-      // Recalculate completion
+      // Recalculate completion scores
       const bucketCompletion: BucketCompletion = {
         core_idea: 0,
         value_prop: 0,
@@ -228,7 +261,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const overallCompletion = calculateOverallCompletion(bucketCompletion)
 
-      // Update local state
+      // Update local state immediately (optimistic)
       set({
         project: {
           ...updatedProject,
@@ -237,23 +270,44 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         },
       })
 
-      // Persist to database
-      const { error } = await supabase
-        .from('business_projects')
-        .update({
-          ...fields,
-          bucket_completion: bucketCompletion,
-          overall_completion: overallCompletion,
-        })
-        .eq('id', project.id)
+      // Persist to database WITH TIMEOUT protection
+      // Create the database operation as a proper promise
+      const dbOperation = async () => {
+        const { error } = await supabase
+          .from('business_projects')
+          .update({
+            ...fields,
+            bucket_completion: bucketCompletion,
+            overall_completion: overallCompletion,
+          })
+          .eq('id', project.id)
 
-      if (error) throw error
+        if (error) {
+          throw new Error(error.message || 'Database update failed')
+        }
+      }
 
-      log.debug('💼 Fields updated')
+      // Wrap with timeout so we don't hang forever
+      await withTimeout(
+        dbOperation(),
+        DB_TIMEOUT_MS,
+        'Save project fields'
+      )
+
+      log.success('💼 Fields updated ✓')
       set({ isSaving: false })
     } catch (error) {
+      // Rollback optimistic update
+      const message = error instanceof Error ? error.message : 'Failed to save'
       log.error('💼 Failed to update fields', error)
-      set({ project, isSaving: false })
+      set({
+        project: originalProject,
+        isSaving: false,
+        saveError: message,
+      })
+
+      // Re-throw so calling code knows it failed!
+      throw error
     }
   },
 
@@ -294,4 +348,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
    * 🧹 Clear error message
    */
   clearError: () => set({ error: null }),
+
+  /**
+   * 🧹 Clear save error message
+   */
+  clearSaveError: () => set({ saveError: null }),
 }))
