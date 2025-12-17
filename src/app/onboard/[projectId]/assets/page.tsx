@@ -7,7 +7,14 @@
  * - File upload (future)
  *
  * This page is OPTIONAL - users can skip it.
- * But if they provide a website, we can scrape it for insights!
+ * But if they provide a website, we trigger the web scraper analyzer
+ * to automatically extract social links and business insights!
+ *
+ * Flow:
+ * 1. User enters website URL
+ * 2. On save, we store the URL and trigger the analyzer
+ * 3. Analyzer runs in background (user doesn't wait)
+ * 4. Results appear on the Hub page
  *
  * Error Handling:
  * - Shows clear error messages to users
@@ -23,6 +30,7 @@ import { OnboardLayout } from '@/components/onboard/OnboardLayout'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useProjectStore } from '@/lib/stores/projectStore'
+import { useAnalyzerStore } from '@/lib/analyzers'
 import { log } from '@/lib/utils/logger'
 import {
   Globe,
@@ -33,6 +41,7 @@ import {
   AlertCircle,
   RefreshCw,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react'
 
 // ============================================
@@ -166,12 +175,16 @@ export default function AssetsPage() {
     clearSaveError,
   } = useProjectStore()
 
+  // Analyzer store for triggering web scraper
+  const { triggerAnalyzers } = useAnalyzerStore()
+
   // Local state
   const [formData, setFormData] = useState<AssetsFormData>({
     websiteUrl: '',
     linkedinUrl: '',
   })
   const [hasError, setHasError] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   // ============================================
   // 🔄 EFFECTS
@@ -221,16 +234,18 @@ export default function AssetsPage() {
    *
    * Uses try/catch to properly handle errors from the store.
    * On failure: shows error banner with retry/skip options
-   * On success: navigates to story page
+   * On success: triggers analyzer (if URL provided) and navigates
+   *
+   * Important: The analyzer runs in the background - user doesn't wait!
    */
   const handleContinue = useCallback(async () => {
     const websiteUrl = formData.websiteUrl.trim()
     const linkedinUrl = formData.linkedinUrl.trim()
-    
-    log.info('💾 Saving assets data...', { 
-      hasWebsite: !!websiteUrl, 
+
+    log.info('💾 Saving assets data...', {
+      hasWebsite: !!websiteUrl,
       hasLinkedin: !!linkedinUrl,
-      projectId 
+      projectId
     })
 
     // Clear any previous errors
@@ -254,16 +269,41 @@ export default function AssetsPage() {
         log.info('💼 Saving LinkedIn URL', { url: linkedinUrl })
       }
 
-      log.debug('💾 Update payload:', { 
+      log.debug('💾 Update payload:', {
         fields: Object.keys(updates),
-        projectId 
+        projectId
       })
 
       // Save to database (throws on error)
       await updateFields(updates as Parameters<typeof updateFields>[0])
 
-      // Success! Navigate to next step
       log.success('✅ Assets saved!', { projectId })
+
+      // 🤖 Trigger the web scraper analyzer if we have a website URL
+      // This runs in the background - don't await it!
+      if (websiteUrl) {
+        log.info('🤖 Triggering web scraper analyzer...', { url: websiteUrl })
+        setIsAnalyzing(true)
+
+        // Fire and forget - analyzer runs in background
+        triggerAnalyzers(projectId, 'web_scraper')
+          .then((result) => {
+            if (result.triggered.length > 0) {
+              log.success('🤖 Web scraper triggered!', { triggered: result.triggered })
+            } else {
+              log.info('🤖 Web scraper not triggered', { message: result.message })
+            }
+          })
+          .catch((err) => {
+            // Don't fail the navigation - just log the error
+            log.error('🤖 Failed to trigger web scraper', err)
+          })
+          .finally(() => {
+            setIsAnalyzing(false)
+          })
+      }
+
+      // Navigate to next step immediately (don't wait for analyzer)
       router.push(`/onboard/${projectId}/story`)
     } catch (err) {
       // Error occurred - show feedback to user
@@ -272,7 +312,7 @@ export default function AssetsPage() {
       setHasError(true)
       // Don't navigate - let user retry or skip
     }
-  }, [formData, updateFields, router, projectId, clearSaveError])
+  }, [formData, updateFields, router, projectId, clearSaveError, triggerAnalyzers])
 
   /**
    * ⏭️ Skip this step entirely
@@ -334,14 +374,28 @@ export default function AssetsPage() {
         )}
 
         {/* Info Banner - Only show when no error */}
-        {!hasError && (
+        {!hasError && !isAnalyzing && (
           <div className="flex items-start gap-3 p-4 bg-primary-50 rounded-lg border border-primary-100">
             <Info className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-primary-800">
               <p className="font-medium mb-1">This step is optional</p>
               <p className="text-primary-600">
-                But if you share your website, we can analyze it and save you
-                time filling in details later!
+                But if you share your website, our AI will automatically find
+                your social links and learn about your business!
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Analyzing Banner - Shows when analyzer is triggered */}
+        {isAnalyzing && (
+          <div className="flex items-start gap-3 p-4 bg-purple-50 rounded-lg border border-purple-100 animate-pulse">
+            <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-purple-800">
+              <p className="font-medium mb-1">🤖 AI is analyzing your website...</p>
+              <p className="text-purple-600">
+                We&apos;re finding your social links and learning about your business.
+                This happens in the background - keep going!
               </p>
             </div>
           </div>

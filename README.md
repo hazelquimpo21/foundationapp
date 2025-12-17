@@ -145,6 +145,17 @@ src/
 │   └── progress/            # Progress indicators
 │
 ├── lib/                      # Core libraries
+│   ├── analyzers/           # 🆕 AI Analyzer System
+│   │   ├── index.ts         # Public exports
+│   │   ├── types.ts         # Type definitions
+│   │   ├── registry.ts      # Analyzer configs
+│   │   ├── triggers.ts      # Trigger evaluation
+│   │   ├── store.ts         # Zustand store
+│   │   └── web-scraper/     # Web Scraper Analyzer
+│   │       ├── index.ts     # Main orchestration
+│   │       ├── scraper.ts   # Website scraping
+│   │       ├── prompt.ts    # Phase 1 prompt
+│   │       └── schema.ts    # Phase 2 schema
 │   ├── config/              # Configuration
 │   │   ├── buckets.ts       # Bucket definitions
 │   │   ├── onboarding.ts    # Onboarding steps, Mad Libs, sliders
@@ -348,7 +359,7 @@ Update project fields.
 
 ### `POST /api/analyze`
 
-Trigger AI analysis.
+Legacy AI analysis endpoint (clarity/synthesis).
 
 ```typescript
 // Request
@@ -363,6 +374,48 @@ Trigger AI analysis.
   runId: string
   rawAnalysis: string
   parsedFields: object
+}
+```
+
+### `POST /api/analyzers/trigger` 🆕
+
+Trigger AI analyzers (auto-detects which to run).
+
+```typescript
+// Request
+{
+  projectId: string
+  analyzerType?: string  // Optional: specific analyzer
+  force?: boolean        // Optional: re-run even if completed
+}
+
+// Response
+{
+  success: boolean
+  triggered: string[]
+  message: string
+}
+```
+
+### `POST /api/analyzers/web-scraper` 🆕
+
+Scrapes a website and extracts insights.
+
+```typescript
+// Request
+{
+  projectId: string
+  runId?: string  // Optional: resume existing run
+}
+
+// Response
+{
+  success: boolean
+  runId: string
+  analyzerType: 'web_scraper'
+  status: 'completed' | 'failed'
+  rawAnalysis?: string
+  parsedFields?: object
 }
 ```
 
@@ -499,10 +552,19 @@ const PROBLEM_URGENCY_SLIDER = {
 
 ### Adding a New Analyzer
 
-1. Add to `ANALYZERS` in `/api/analyze/route.ts`
-2. Add to `analyzer_type` check constraint in SQL
-3. Add parsing schema for function calling
-4. Add trigger conditions (optional)
+The analyzer system is now modular! See `src/lib/analyzers/README.md` for full details.
+
+**Quick steps:**
+1. Add the type to `lib/analyzers/types.ts`
+2. Add config to `lib/analyzers/registry.ts`
+3. Create analyzer folder: `lib/analyzers/your-analyzer/`
+4. Create API route: `app/api/analyzers/your-analyzer/route.ts`
+5. Add SQL migration for new fields (if needed)
+
+**Existing analyzers:**
+- `web_scraper` - Scrapes website, finds socials, infers industry
+- `clarity` - Analyzes idea clarity (legacy)
+- `synthesis` - Full business synthesis (legacy)
 
 ### Debugging
 
