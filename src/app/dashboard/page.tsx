@@ -28,8 +28,7 @@ import {
 export default function DashboardPage() {
   const router = useRouter()
   const { member, isInitialized, initialize, signOut } = useAuthStore()
-  const { projects, isLoading, loadProjects, createProject, deleteProject } = useProjectStore()
-  const [creatingProject, setCreatingProject] = useState(false)
+  const { projects, isLoading, loadProjects, deleteProject } = useProjectStore()
 
   // Initialize auth
   useEffect(() => {
@@ -50,16 +49,12 @@ export default function DashboardPage() {
     }
   }, [isInitialized, member, router])
 
-  const handleCreateProject = async () => {
-    if (!member) return
-
-    setCreatingProject(true)
-    const project = await createProject(member.id, 'New Business Idea')
-    setCreatingProject(false)
-
-    if (project) {
-      router.push(`/onboard/${project.id}`)
-    }
+  /**
+   * 🆕 Navigate to new project flow
+   * Note: We now go to /onboard/new first, which handles project creation
+   */
+  const handleCreateProject = () => {
+    router.push('/onboard/new')
   }
 
   const handleDeleteProject = async (projectId: string) => {
@@ -91,7 +86,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Rocket className="w-7 h-7 text-primary-500" />
               <span className="text-lg font-bold text-gray-900">
-                Business Onboarder
+                Foundation Studio
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -119,7 +114,7 @@ export default function DashboardPage() {
                 : `${projects.length} project${projects.length === 1 ? '' : 's'}`}
             </p>
           </div>
-          <Button onClick={handleCreateProject} loading={creatingProject}>
+          <Button onClick={handleCreateProject}>
             <Plus className="w-4 h-4" />
             New Project
           </Button>
@@ -149,6 +144,25 @@ export default function DashboardPage() {
 }
 
 /**
+ * 🔍 Get the URL to continue working on a project
+ * Routes to the appropriate step based on project status
+ */
+function getProjectUrl(project: {
+  id: string
+  status: string
+  current_step?: string
+}): string {
+  // Completed projects go to the done/summary page
+  if (project.status === 'completed') {
+    return `/onboard/${project.id}/done`
+  }
+
+  // Route to the current step, or setup if none set
+  const step = project.current_step || 'setup'
+  return `/onboard/${project.id}/${step}`
+}
+
+/**
  * Project Card Component
  */
 function ProjectCard({
@@ -162,10 +176,13 @@ function ProjectCard({
     overall_completion: number
     updated_at: string
     status: string
+    current_step?: string
   }
   onDelete: () => void
 }) {
   const [showMenu, setShowMenu] = useState(false)
+  const projectUrl = getProjectUrl(project)
+  const isComplete = project.status === 'completed'
 
   return (
     <Card className="relative group" interactive>
@@ -200,7 +217,7 @@ function ProjectCard({
       </div>
 
       {/* Card Content */}
-      <Link href={`/onboard/${project.id}`}>
+      <Link href={projectUrl}>
         <div className="pr-8">
           {/* Project Name */}
           <CardTitle className="mb-1">
@@ -235,7 +252,7 @@ function ProjectCard({
 
           {/* Open Link */}
           <div className="mt-4 flex items-center gap-1 text-sm text-primary-600 font-medium">
-            Continue
+            {isComplete ? 'View' : 'Continue'}
             <ExternalLink className="w-3.5 h-3.5" />
           </div>
         </div>
@@ -257,12 +274,12 @@ function EmptyState({ onCreateProject }: { onCreateProject: () => void }) {
         No projects yet
       </h2>
       <p className="text-gray-500 mb-6 text-center max-w-md">
-        Create your first project to start defining and validating your business
-        idea with AI assistance.
+        Create your first project to start building your brand foundation.
+        Answer a few simple questions and we&apos;ll help define your brand.
       </p>
       <Button onClick={onCreateProject} size="lg">
         <Plus className="w-5 h-5" />
-        Create Your First Project
+        Start Your First Brand
       </Button>
     </div>
   )
