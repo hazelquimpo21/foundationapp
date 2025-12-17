@@ -11,10 +11,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors
+let openaiClient: OpenAI | null = null
+
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('❌ OPENAI_API_KEY environment variable is not set')
+    }
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openaiClient
+}
 
 // System prompt for the onboarding assistant
 const SYSTEM_PROMPT = `You are a friendly, insightful business advisor helping someone define their business idea. Your goal is to:
@@ -128,7 +138,7 @@ export async function POST(request: NextRequest) {
     console.log('💬 [API] Calling OpenAI...', { messageCount: openaiMessages.length })
 
     // Call OpenAI
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: openaiMessages,
       temperature: 0.7,

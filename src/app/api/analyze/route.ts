@@ -11,9 +11,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors
+let openaiClient: OpenAI | null = null
+
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('❌ OPENAI_API_KEY environment variable is not set')
+    }
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openaiClient
+}
 
 // Analyzer configurations
 const ANALYZERS = {
@@ -114,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     // Phase 1: Analysis
     console.log('🤖 [API] Phase 1: Running analysis...')
-    const analysisResponse = await openai.chat.completions.create({
+    const analysisResponse = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: analyzer.systemPrompt },
@@ -303,7 +314,7 @@ async function parseAnalysis(
     },
   }
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       {
@@ -320,8 +331,10 @@ async function parseAnalysis(
   })
 
   const toolCall = response.choices[0]?.message?.tool_calls?.[0]
-  if (toolCall?.function?.arguments) {
-    return JSON.parse(toolCall.function.arguments)
+  // Type assertion needed for OpenAI SDK function tool calls
+  const functionCall = toolCall && 'function' in toolCall ? toolCall.function : null
+  if (functionCall?.arguments) {
+    return JSON.parse(functionCall.arguments)
   }
 
   return {}

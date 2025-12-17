@@ -1,6 +1,6 @@
-# 🚀 Business Onboarder
+# 🚀 Foundation Studio
 
-AI-powered business idea onboarding app that helps founders define, validate, and shape their business ideas through conversational AI.
+AI-powered brand onboarding app that helps founders and consultants define their brand foundation through guided, structured inputs (Mad Libs, word banks, and sliders).
 
 ## 📋 Table of Contents
 
@@ -91,7 +91,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
 
 ### Key Concepts
 
-1. **Chat-First UX**: Users interact primarily through chat, with structured inputs (word banks, sliders) appearing contextually to overcome blank page syndrome.
+1. **Structured Onboarding**: Users flow through guided steps with fill-in-the-blank Mad Libs, word bank selections, and preference sliders. This reduces cognitive load compared to open-ended chat.
 
 2. **Two-Phase AI Analysis**:
    - **Phase 1 (Analysis)**: GPT-4o-mini reads between the lines, infers, suggests
@@ -119,13 +119,27 @@ src/
 │   ├── dashboard/           # Dashboard page
 │   ├── login/               # Login page
 │   ├── signup/              # Signup page
-│   ├── onboard/[projectId]/ # Main onboarding chat
+│   ├── onboard/             # Onboarding flow
+│   │   ├── new/             # Project type selection
+│   │   └── [projectId]/     # Per-project steps
+│   │       ├── setup/       # Basic info form
+│   │       ├── assets/      # Website & LinkedIn (optional)
+│   │       ├── story/       # Mad Libs narrative
+│   │       ├── words/       # Word bank selections
+│   │       ├── style/       # Preference sliders
+│   │       ├── hub/         # Analysis dashboard
+│   │       └── done/        # Completion page
 │   ├── layout.tsx           # Root layout
 │   ├── page.tsx             # Landing page
 │   └── globals.css          # Global styles
 │
 ├── components/               # React components
 │   ├── ui/                  # Primitives (Button, Input, Card)
+│   ├── onboard/             # Onboarding components
+│   │   ├── OnboardLayout    # Wrapper with step indicator
+│   │   ├── MadLibsInput     # Fill-in-blank inputs
+│   │   ├── WordBankSelector # Word selection grid
+│   │   └── StyleSlider      # Preference sliders
 │   ├── chat/                # Chat interface components
 │   ├── interactions/        # Word banks, sliders, choices
 │   └── progress/            # Progress indicators
@@ -133,6 +147,7 @@ src/
 ├── lib/                      # Core libraries
 │   ├── config/              # Configuration
 │   │   ├── buckets.ts       # Bucket definitions
+│   │   ├── onboarding.ts    # Onboarding steps, Mad Libs, sliders
 │   │   ├── wordBanks.ts     # Word bank options
 │   │   └── interactions.ts  # Slider/choice configs
 │   ├── stores/              # Zustand stores
@@ -365,6 +380,17 @@ Trigger AI analysis.
 | `Card` | Container with variants and sub-components |
 | `Chip` | Selectable tags for word banks |
 | `ProgressBar` | Horizontal and circular progress |
+
+### Onboarding Components (`components/onboard/`)
+
+| Component | Description |
+|-----------|-------------|
+| `OnboardLayout` | Wrapper with header, step indicator, navigation footer |
+| `StepIndicator` | Progress dots showing current step (desktop) or X/Y (mobile) |
+| `MadLibsInput` | Single fill-in-blank inline input |
+| `MadLibsParagraph` | Full paragraph with embedded blank inputs |
+| `WordBankSelector` | Multi-select word grid with categories and shuffle |
+| `StyleSlider` | 5-point preference slider with descriptions |
 
 ### Chat Components (`components/chat/`)
 
