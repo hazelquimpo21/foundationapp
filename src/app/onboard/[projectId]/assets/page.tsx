@@ -13,11 +13,12 @@
  * - Shows clear error messages to users
  * - Offers retry or skip options when save fails
  * - Uses timeout protection (won't hang forever)
+ * - Error state persists until user manually changes input
  */
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { OnboardLayout } from '@/components/onboard/OnboardLayout'
 import { Input } from '@/components/ui/Input'
@@ -173,6 +174,9 @@ export default function AssetsPage() {
   })
   const [hasError, setHasError] = useState(false)
 
+  // Track if we're initializing from project data (to avoid clearing errors on rollback)
+  const isInitializing = useRef(true)
+
   // ============================================
   // 🔄 EFFECTS
   // ============================================
@@ -185,34 +189,37 @@ export default function AssetsPage() {
     }
   }, [projectId, loadProject])
 
-  // Pre-fill form when project loads
+  // Pre-fill form when project loads (initial load only)
   useEffect(() => {
-    if (project) {
+    if (project && isInitializing.current) {
+      log.debug('📋 Pre-filling form from project data')
       setFormData({
         websiteUrl: project.positioning || '',
         linkedinUrl: project.north_star_metric || '',
       })
+      // Mark initialization complete after a short delay
+      // This prevents the error-clearing effect from running on initial load
+      setTimeout(() => {
+        isInitializing.current = false
+      }, 100)
     }
   }, [project])
-
-  // Clear error when form changes
-  useEffect(() => {
-    if (hasError) {
-      setHasError(false)
-      clearSaveError()
-    }
-    // Only run when form data changes, not on hasError change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.websiteUrl, formData.linkedinUrl])
 
   // ============================================
   // 🎯 HANDLERS
   // ============================================
 
   /**
-   * 📝 Handle field change
+   * 📝 Handle field change (user input only)
+   * Clears error state when user starts typing
    */
   const handleChange = (field: keyof AssetsFormData, value: string) => {
+    // Only clear errors on actual user input, not on project rollback
+    if (hasError && !isInitializing.current) {
+      log.debug('🧹 Clearing error on user input')
+      setHasError(false)
+      clearSaveError()
+    }
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -226,7 +233,7 @@ export default function AssetsPage() {
   const handleContinue = useCallback(async () => {
     log.info('💾 Saving assets data...', formData)
 
-    // Clear any previous errors
+    // Clear any previous errors before save attempt
     setHasError(false)
     clearSaveError()
 
@@ -258,6 +265,8 @@ export default function AssetsPage() {
       const message = err instanceof Error ? err.message : 'Failed to save'
       log.error('❌ Failed to save assets', err)
       setHasError(true)
+      // Mark as not initializing so user can clear error by typing
+      isInitializing.current = false
       // Don't navigate - let user retry or skip
     }
   }, [formData, updateFields, router, projectId, clearSaveError])
