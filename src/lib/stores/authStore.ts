@@ -100,22 +100,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       // Listen for auth changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      // NOTE: We use a non-blocking pattern here to avoid hanging other requests
+      supabase.auth.onAuthStateChange((event, session) => {
         log.debug('🔐 Auth state changed', { event })
 
         if (event === 'SIGNED_IN' && session?.user) {
-          // Fetch member profile
-          const { data: member } = await supabase
+          // Fetch member profile in background (don't await to avoid blocking)
+          supabase
             .from('members')
             .select('*')
             .eq('auth_id', session.user.id)
             .single()
-
-          if (member) {
-            set({ member })
-          }
+            .then(({ data: member }) => {
+              if (member) {
+                log.debug('🔐 Member profile loaded after auth change')
+                set({ member })
+              }
+            })
+            .catch(err => {
+              log.error('🔐 Failed to load member after auth change', err)
+            })
         } else if (event === 'SIGNED_OUT') {
           set({ member: null })
+        } else if (event === 'TOKEN_REFRESHED') {
+          log.debug('🔐 Token refreshed successfully')
         }
       })
     } catch (error) {

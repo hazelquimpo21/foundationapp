@@ -14,9 +14,8 @@
  */
 
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase/client'
+import { supabase, createClient } from '@/lib/supabase/client'
 import { log } from '@/lib/utils/logger'
-import { withTimeout } from '@/lib/utils/async'
 import { calculateBucketCompletion, calculateOverallCompletion, BUCKET_ORDER } from '@/lib/config/buckets'
 import type { BusinessProject, BucketCompletion } from '@/lib/types'
 
@@ -25,7 +24,7 @@ import type { BusinessProject, BucketCompletion } from '@/lib/types'
 // ============================================
 
 /** Database operation timeout in ms */
-const DB_TIMEOUT_MS = 15000
+const DB_TIMEOUT_MS = 20000
 
 // ============================================
 // 📋 TYPES
@@ -232,7 +231,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       throw new Error('No project loaded - cannot save changes')
     }
 
-    log.info('💼 Updating fields...', { fields: Object.keys(fields) })
+    const fieldKeys = Object.keys(fields)
+    log.info('💼 Updating fields...', { 
+      projectId: project.id,
+      fields: fieldKeys,
+      fieldCount: fieldKeys.length 
+    })
     set({ isSaving: true, saveError: null })
 
     // Keep original for rollback
@@ -270,31 +274,82 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         },
       })
 
-      // Persist to database WITH TIMEOUT protection
-      // Create the database operation as a proper promise
-      const dbOperation = async () => {
-        const { error } = await supabase
-          .from('business_projects')
-          .update({
-            ...fields,
-            bucket_completion: bucketCompletion,
-            overall_completion: overallCompletion,
-          })
-          .eq('id', project.id)
+      // Persist to database with timeout protection
+      log.debug('💼 Starting database update...', { projectId: project.id })
+      const startTime = Date.now()
 
-        if (error) {
-          throw new Error(error.message || 'Database update failed')
-        }
+      // Log what we're about to save (for debugging)
+      const updatePayload = {
+        ...fields,
+        bucket_completion: bucketCompletion,
+        overall_completion: overallCompletion,
+      }
+      log.debug('💼 Update payload:', { 
+        fields: Object.keys(updatePayload),
+        projectId: project.id 
+      })
+
+      // Use a fresh client to avoid any stale auth state issues
+      const freshClient = createClient()
+      
+      log.debug('💼 Calling Supabase update...', { 
+        table: 'business_projects',
+        projectId: project.id,
+        fieldNames: Object.keys(updatePayload)
+      })
+
+      const updatePromise = freshClient
+        .from('business_projects')
+        .update(updatePayload)
+        .eq('id', project.id)
+        .select('id, updated_at')
+        .single()
+        .then(result => {
+          log.debug('💼 Supabase resolved', { 
+            hasData: !!result.data, 
+            hasError: !!result.error,
+            errorMessage: result.error?.message,
+            errorCode: result.error?.code,
+            duration: `${Date.now() - startTime}ms`
+          })
+          return result
+        })
+        .catch(err => {
+          log.error('💼 Supabase rejected', err, {
+            duration: `${Date.now() - startTime}ms`
+          })
+          throw err
+        })
+
+      // Create a timeout promise that rejects after DB_TIMEOUT_MS
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Database update timed out after ${DB_TIMEOUT_MS}ms`))
+        }, DB_TIMEOUT_MS)
+      })
+
+      // Race the update against the timeout
+      const { data, error } = await Promise.race([
+        updatePromise,
+        timeoutPromise
+      ]) as Awaited<typeof updatePromise>
+
+      const duration = Date.now() - startTime
+
+      if (error) {
+        log.error('💼 Database error', error, { 
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          duration: `${duration}ms`
+        })
+        throw new Error(error.message || 'Database update failed')
       }
 
-      // Wrap with timeout so we don't hang forever
-      await withTimeout(
-        dbOperation(),
-        DB_TIMEOUT_MS,
-        'Save project fields'
-      )
-
-      log.success('💼 Fields updated ✓')
+      log.success('💼 Fields updated ✓', { 
+        duration: `${duration}ms`,
+        updatedAt: data?.updated_at 
+      })
       set({ isSaving: false })
     } catch (error) {
       // Rollback optimistic update

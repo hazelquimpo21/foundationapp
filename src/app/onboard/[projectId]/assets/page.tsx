@@ -189,8 +189,8 @@ export default function AssetsPage() {
   useEffect(() => {
     if (project) {
       setFormData({
-        websiteUrl: project.positioning || '',
-        linkedinUrl: project.north_star_metric || '',
+        websiteUrl: project.website_url || '',
+        linkedinUrl: project.linkedin_url || '',
       })
     }
   }, [project])
@@ -224,39 +224,51 @@ export default function AssetsPage() {
    * On success: navigates to story page
    */
   const handleContinue = useCallback(async () => {
-    log.info('💾 Saving assets data...', formData)
+    const websiteUrl = formData.websiteUrl.trim()
+    const linkedinUrl = formData.linkedinUrl.trim()
+    
+    log.info('💾 Saving assets data...', { 
+      hasWebsite: !!websiteUrl, 
+      hasLinkedin: !!linkedinUrl,
+      projectId 
+    })
 
     // Clear any previous errors
     setHasError(false)
     clearSaveError()
 
     try {
-      // Build update object
+      // Build update object - always update current_step
       const updates: Record<string, unknown> = {
         current_step: 'story',
       }
 
-      // Only include URLs if provided
-      if (formData.websiteUrl.trim()) {
-        updates.positioning = formData.websiteUrl.trim()
-        log.info('🌐 Website URL:', { url: formData.websiteUrl })
+      // Only include URLs if provided (avoid overwriting with empty)
+      if (websiteUrl) {
+        updates.website_url = websiteUrl
+        log.info('🌐 Saving website URL', { url: websiteUrl })
       }
 
-      if (formData.linkedinUrl.trim()) {
-        updates.north_star_metric = formData.linkedinUrl.trim()
-        log.info('💼 LinkedIn URL:', { url: formData.linkedinUrl })
+      if (linkedinUrl) {
+        updates.linkedin_url = linkedinUrl
+        log.info('💼 Saving LinkedIn URL', { url: linkedinUrl })
       }
+
+      log.debug('💾 Update payload:', { 
+        fields: Object.keys(updates),
+        projectId 
+      })
 
       // Save to database (throws on error)
       await updateFields(updates as Parameters<typeof updateFields>[0])
 
       // Success! Navigate to next step
-      log.success('✅ Assets saved!')
+      log.success('✅ Assets saved!', { projectId })
       router.push(`/onboard/${projectId}/story`)
     } catch (err) {
       // Error occurred - show feedback to user
       const message = err instanceof Error ? err.message : 'Failed to save'
-      log.error('❌ Failed to save assets', err)
+      log.error('❌ Failed to save assets', err, { message })
       setHasError(true)
       // Don't navigate - let user retry or skip
     }

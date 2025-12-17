@@ -70,6 +70,10 @@ export interface BusinessProject {
   project_name: string
   status: ProjectStatus
 
+  // Asset URLs (from onboarding)
+  website_url: string | null
+  linkedin_url: string | null
+
   // Bucket 1: Core Idea
   idea_name: string | null
   one_liner: string | null
